@@ -1,0 +1,25 @@
+modLoader="neoforge"  # ←ここが最重要！
+loaderVersion="[20,)"  # NeoForge のバージョンに合わせる（例: 20以上をサポート）
+
+license="MIT"
+
+[[mods]]
+modId="businessmcmod"
+version="${mod_version}"
+displayName="BusinessMC Mod"
+description="A minimal NeoForge mod for Minecraft."
+authors="${mod_authors}"
+
+[[dependencies.businessmcmod]]
+modId="neoforge"
+mandatory=true
+versionRange="[20,)"  # もしくは実際に使ってるNeoForgeのバージョン範囲
+ordering="NONE"
+side="SERVER"
+
+[[dependencies.businessmcmod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.20.2)"  # 実際のマイクラバージョン範囲
+ordering="NONE"
+side="SERVER"
