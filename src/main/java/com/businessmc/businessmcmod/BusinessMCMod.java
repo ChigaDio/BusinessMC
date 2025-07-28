@@ -3,6 +3,12 @@ package com.businessmc.businessmcmod;
 import com.businessmc.businessmcmod.client.PlayerClientData;
 import com.businessmc.businessmcmod.client.ui.ClientHudOverlay;
 import com.businessmc.businessmcmod.client.ui.LockedCraftingMenu;
+import com.businessmc.businessmcmod.client.ui.menu.BelmondMenu;
+import com.businessmc.businessmcmod.client.ui.menu.BusinessShopMenu;
+import com.businessmc.businessmcmod.client.ui.menu.MenuRegistration;
+import com.businessmc.businessmcmod.client.ui.screen.BelmondScreen;
+import com.businessmc.businessmcmod.client.ui.screen.BusinessShopScreen;
+import com.businessmc.businessmcmod.entity.EntityRegistration;
 import com.businessmc.businessmcmod.mongodb.MongoDBConnectionManager;
 import com.businessmc.businessmcmod.network.handler.NetworkPayloadRegistration;
 import com.businessmc.businessmcmod.network.payload.PlayerDataSyncPayload;
@@ -26,6 +32,7 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ContainerLevelAccess;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -48,9 +55,12 @@ import net.neoforged.bus.api.IEventBus;
 import org.bson.Document;
 import net.minecraft.client.gui.screens.inventory.CraftingScreen;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+
+import net.minecraft.client.gui.screens.MenuScreens;
 
 @Mod(BusinessMCMod.MOD_ID)
 public class BusinessMCMod {
@@ -60,6 +70,11 @@ public class BusinessMCMod {
     private static MongoDatabase gameDatabase;
 
     public BusinessMCMod(IEventBus modEventBus, ModContainer modContainer) {
+
+        mongoClient = MongoDBConnectionManager.getInstance(
+                "127.0.0.1", 27017, "admin", "secret", "admin",
+                100, 10, 3000, 3000
+        );
         System.out.println("BusinessMCMod: Constructing mod");
 
         modEventBus.addListener(this::onCommonSetup);
@@ -77,6 +92,11 @@ public class BusinessMCMod {
         NeoForge.EVENT_BUS.addListener(this::onRenderScreen);
         NeoForge.EVENT_BUS.addListener(this::onRightClickBlock);
 
+        new EntityRegistration(modEventBus); // エンティティ登録
+        modEventBus.addListener(EntityRegistration::registerRenderers);
+        modEventBus.addListener(EntityRegistration::onEntityAttributeCreation);
+
+        new MenuRegistration(modEventBus); // メニュー登録
         modEventBus.addListener(NetworkPayloadRegistration::registerServer);
     }
 
@@ -98,8 +118,34 @@ public class BusinessMCMod {
     }
 
     private void clientSetup(final FMLClientSetupEvent event) {
+
         System.out.println("BusinessMCMod: clientSetup");
-        new ClientHudOverlay(); // Client-side HUD initialization
+        event.enqueueWork(() -> {
+            try {
+                // リフレクションで MenuScreens.register を呼び出し
+                Method registerMethod = MenuScreens.class.getDeclaredMethod(
+                        "register",
+                        MenuType.class,
+                        MenuScreens.ScreenConstructor.class
+                );
+                registerMethod.setAccessible(true);
+                // 型を明示的にキャスト
+                @SuppressWarnings("unchecked")
+                MenuScreens.ScreenConstructor<BelmondMenu, BelmondScreen> constructor = (container, inventory, title) -> new BelmondScreen(container, inventory, title);
+                registerMethod.invoke(null, MenuRegistration.BELMOND_MENU.get(), constructor);
+                System.out.println("Successfully registered BelmondScreen via reflection");
+
+                MenuScreens.ScreenConstructor<BusinessShopMenu, BusinessShopScreen> busines_shop_constructor = (container, inventory, title) -> new BusinessShopScreen(container, inventory, title);
+                registerMethod.invoke(null, MenuRegistration.BUSINESS_SHOP_MENU.get(), busines_shop_constructor);
+
+                new ClientHudOverlay(); // Client-side HUD initialization
+            } catch (Exception e) {
+                System.err.println("Failed to register BelmondScreen: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+
     }
 
     public  void onServerStarted(ServerStartedEvent event) {
@@ -109,10 +155,7 @@ public class BusinessMCMod {
     private void onServerStarting(ServerStartingEvent event) {
 
         System.out.println("BusinessMCMod: Server starting");
-        mongoClient = MongoDBConnectionManager.getInstance(
-                "127.0.0.1", 27017, "admin", "secret", "admin",
-                100, 10, 3000, 3000
-        );
+
         gameDatabase = mongoClient.getDatabase("game");
 
         registerCommands(event);
@@ -407,6 +450,7 @@ public class BusinessMCMod {
     }
 
     private double getSellRatio(int jobId) {
+        if(JobTypeCollectionDb.cache_data == null) return 0.0;
         var jobData = JobTypeCollectionDb.cache_data.stream().filter(item -> item.getJobId() == jobId).findFirst();
         return jobData != null ? jobData.get().getSellRatio() : 0.0;
     }

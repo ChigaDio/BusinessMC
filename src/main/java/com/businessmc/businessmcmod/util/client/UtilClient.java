@@ -30,8 +30,8 @@ public class UtilClient {
 
         //存在チェック
         var check_result = ItemBlockGameCollectionDb.findAllItemBlockMany(db);
-        if(!check_result.isSuccess()) return;
-        if(check_result.getResult().size() <= 0) return;
+        if(check_result.isSuccess()) return;
+        if(check_result.getResult().size() > 0) return;
 
         List<ItemBlockGameCollectionData> add_list = new ArrayList<>();
 
@@ -117,7 +117,7 @@ public class UtilClient {
         var result = UtilGeneral.getBlockPath(blok);
 
         //壊したブロックが壊したプレイヤーの職業で報酬が得られるか
-        var result_job_recipe = ItemBlockGameCollectionDb.findActionJobOne(db,client,data.getJobId());
+        var result_job_recipe = ItemBlockGameCollectionDb.findActionBlockJobOne(db,client,data.getJobId(),result);
         if(!result_job_recipe.isSuccess()) return 0.0;
 
 

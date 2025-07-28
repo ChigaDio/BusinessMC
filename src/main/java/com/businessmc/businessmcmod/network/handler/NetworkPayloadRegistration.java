@@ -1,6 +1,8 @@
 package com.businessmc.businessmcmod.network.handler;
 
 import com.businessmc.businessmcmod.BusinessMCMod;
+import com.businessmc.businessmcmod.network.payload.ButtonClickPayload;
+import com.businessmc.businessmcmod.network.payload.ButtonResultPayload;
 import com.businessmc.businessmcmod.network.payload.PlayerDataSyncPayload;
 import net.neoforged.bus.api.SubscribeEvent;
 import  net.neoforged.fml.common.Mod;
@@ -18,6 +20,18 @@ public class NetworkPayloadRegistration {
                         PlayerDataSyncPayload.TYPE,
                         PlayerDataSyncPayload.STREAM_CODEC,
                         ClientPayloadHandler::handlePlayerDataSync
+                )
+                .playToServer(
+                        ButtonClickPayload.TYPE,
+                        ButtonClickPayload.STREAM_CODEC,
+                        ServerPayloadHandler::handleButtonClick
+                )
+
+                // server -> client: ボタン処理結果
+                .playToClient(
+                        ButtonResultPayload.TYPE,
+                        ButtonResultPayload.STREAM_CODEC,
+                        ClientPayloadHandler::handleButtonResult
                 );
     }
 
@@ -26,6 +40,10 @@ public class NetworkPayloadRegistration {
         event.register(
                 PlayerDataSyncPayload.TYPE,
                 ClientPayloadHandler::handlePlayerDataSync
+        );
+        event.register(
+                ButtonResultPayload.TYPE,
+                ClientPayloadHandler::handleButtonResult
         );
     }
 }

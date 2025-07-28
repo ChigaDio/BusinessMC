@@ -34,6 +34,7 @@ public record PlayerDataSyncPayload(String playerId, double balance, int jobId) 
         player.connection.send(new ClientboundCustomPayloadPacket(
                 new PlayerDataSyncPayload(player.getStringUUID(), balance, jobId)
         ));
+
     }
 
 }

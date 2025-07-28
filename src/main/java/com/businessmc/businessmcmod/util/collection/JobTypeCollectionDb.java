@@ -65,7 +65,7 @@ public class JobTypeCollectionDb {
                             return match;
                         })
                         .collect(Collectors.toList());
-                return DataBaseResultPair.of(false, null);
+                return  DataBaseResultPair.of(resultList.size() > 0 ? true : false, resultList);
 
             }
             MongoCollection<Document> collection = db.getCollection("job_type");
@@ -87,7 +87,7 @@ public class JobTypeCollectionDb {
                             return match;
                         })
                         .collect(Collectors.toList());
-                return DataBaseResultPair.of(false, null);
+                return  DataBaseResultPair.of(resultList.size() > 0 ? true : false, resultList);
 
             }
             MongoCollection<Document> collection = db.getCollection("job_type");
@@ -109,7 +109,7 @@ public class JobTypeCollectionDb {
                             return match;
                         })
                         .collect(Collectors.toList());
-                return DataBaseResultPair.of(false, null);
+                return  DataBaseResultPair.of(resultList.size() > 0 ? true : false, resultList);
 
             }
             MongoCollection<Document> collection = db.getCollection("job_type");
@@ -131,7 +131,7 @@ public class JobTypeCollectionDb {
                             return match;
                         })
                         .collect(Collectors.toList());
-                return DataBaseResultPair.of(false, null);
+                return  DataBaseResultPair.of(resultList.size() > 0 ? true : false, resultList);
 
             }
             MongoCollection<Document> collection = db.getCollection("job_type");
