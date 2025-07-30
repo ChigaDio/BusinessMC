@@ -36,7 +36,7 @@ public class LockedCraftingMenu extends CraftingMenu {
 
     @Override
     public void slotsChanged(Container container) {
-        super.slotsChanged(container);
+        super.slotsChanged(container); // 親クラスの処理を呼び出し
 
         if (!(container instanceof CraftingContainer crafting)) return;
 
@@ -61,17 +61,27 @@ public class LockedCraftingMenu extends CraftingMenu {
         if (match.isPresent()) {
             var id = match.get().id();
             var gamedatabase = MongoDBConnectionManager.getInstance().getDatabase("game");
-            //プレイヤーデータを取得
-            var player_data = UserGamePlayerCollectionDb.findPlayerGameDataOne(gamedatabase,player.getStringUUID());
-            //ItemBlockDataDbから、現在のジョブでチェック
-            var result_item_block = ItemBlockGameCollectionDb.findActionBlockJobOne(gamedatabase,player_data.getResult().getJobId(),id.location().getPath());
+            // プレイヤーデータを取得
+            var player_data = UserGamePlayerCollectionDb.findPlayerGameDataOne(gamedatabase, player.getStringUUID());
+            // ItemBlockDataDbから、現在のジョブでチェック
+            var result_item_block = ItemBlockGameCollectionDb.findActionBlockJobOne(gamedatabase, player_data.getResult().getJobId(), id.location().getPath());
 
-            if(!result_item_block.isSuccess())
-            {
-                this.resultSlots.setItem(0, ItemStack.EMPTY);
+            if (!result_item_block.isSuccess()) {
+                this.resultSlots.setItem(0, ItemStack.EMPTY); // 結果スロットをクリア
+            } else {
+                // レシピが許可されている場合、通常の結果を設定
+                CraftingRecipe recipe = match.get().value();
+                ItemStack result = recipe.assemble(input, player.level().registryAccess());
+                this.resultSlots.setItem(0, result);
             }
-
+        } else {
+            // レシピがない場合も結果スロットをクリア
+            this.resultSlots.setItem(0, ItemStack.EMPTY);
         }
+
+        // スロット変更をクライアントに同期
+        this.resultSlots.setChanged(); // 結果スロットの変更をマーク
+        this.broadcastChanges(); // メニューのスロット状態をクライアントに送信
     }
 
 

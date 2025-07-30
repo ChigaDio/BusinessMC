@@ -8,9 +8,11 @@ import com.businessmc.businessmcmod.util.general.UtilGeneral;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoDatabase;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeHolder;
@@ -131,6 +133,75 @@ public class UtilClient {
 
         return reward;
     }
+    public static boolean sellItemFromPlayer(ServerPlayer player, String itemName, int count) {
+        Item item = UtilGeneral.getItemFromName(itemName);
+        if (item == null || item.equals(ItemStack.EMPTY.getItem())) {
+            player.sendSystemMessage(Component.literal("存在しないアイテム名: " + itemName));
+            return false;
+        }
+
+        Inventory inv = player.getInventory();
+        int totalCount = 0;
+
+        // 合計数を数える
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack stack = inv.getItem(i);
+            if (!stack.isEmpty() && stack.getItem().equals(item)) {
+                totalCount += stack.getCount();
+            }
+        }
+
+        if (totalCount < count) {
+            player.sendSystemMessage(Component.literal("アイテムが足りません: " + itemName));
+            return false;
+        }
+
+        // アイテムを削除（売却）
+        int remaining = count;
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack stack = inv.getItem(i);
+            if (!stack.isEmpty() && stack.getItem().equals(item)) {
+                int remove = Math.min(stack.getCount(), remaining);
+                stack.shrink(remove);
+                remaining -= remove;
+                if (remaining <= 0) break;
+            }
+        }
+
+
+
+        player.sendSystemMessage(Component.literal("売却成功: " + itemName + " ×" + count));
+        // インベントリを同期
+        player.getInventory().setChanged();
+        player.inventoryMenu.broadcastChanges();
+
+        return true;
+    }
+
+    // プレイヤーにアイテムを追加（スタック or ドロップ）
+    public static Boolean addItemToPlayer(ServerPlayer player, String itemName, int count) {
+        Item item = UtilGeneral.getItemFromName(itemName);
+        if (item != null && !item.equals(ItemStack.EMPTY.getItem())) {
+            ItemStack stack = new ItemStack(item, count);
+            boolean success = player.getInventory().add(stack);
+            if (!stack.isEmpty()) {
+
+                // インベントリ満杯 → ドロップ
+                player.drop(stack, false); // false = プレイヤーが投げたとみなさない
+            }
+            // インベントリを同期
+            player.getInventory().setChanged();
+            player.inventoryMenu.broadcastChanges();
+            return  true;
+        } else {
+            player.sendSystemMessage(Component.literal("存在しないアイテム名: " + itemName));
+            return false;
+        }
+    }
+
+
+
+
 
 
 

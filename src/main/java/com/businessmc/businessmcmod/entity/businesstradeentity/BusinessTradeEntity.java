@@ -55,9 +55,9 @@ public class BusinessTradeEntity extends PathfinderMob implements IEntityWithCom
     private List<Item> sellable = new ArrayList<>();
     private Vector3 fixedpos = new Vector3();
 
-    private static final EntityDataAccessor<Integer> ENTITY_ID =
+    public static final EntityDataAccessor<Integer> ENTITY_ID =
             SynchedEntityData.defineId(BusinessTradeEntity.class, EntityDataSerializers.INT);
-    private static final EntityDataAccessor<Vector3f> FIXED_POS =
+    public static final EntityDataAccessor<Vector3f> FIXED_POS =
             SynchedEntityData.defineId(BusinessTradeEntity.class, EntityDataSerializers.VECTOR3);
 
     public BusinessTradeEntity(EntityType<? extends PathfinderMob> type, Level world) {
@@ -242,7 +242,7 @@ public class BusinessTradeEntity extends PathfinderMob implements IEntityWithCom
                     add(add_shop_sale);
                 }});
 
-                for(int count = 0; count < 100; count ++) {
+                for(int count = 0; count < 1; count ++) {
 
                     add_data.getSaleList().add(add_shop_sale);
                     add_data.getBuyList().add(add_shop_sale);

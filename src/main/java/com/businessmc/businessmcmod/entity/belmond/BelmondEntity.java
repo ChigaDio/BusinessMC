@@ -105,8 +105,12 @@ public class BelmondEntity extends PathfinderMob {
 
         }
 
+
+        this.startPos = this.blockPosition();
+        this.endPos = this.startPos.offset(10,0,0);
         this.setInvulnerable(true);
         this.setPersistenceRequired();
+
 
     }
 
@@ -131,15 +135,40 @@ public class BelmondEntity extends PathfinderMob {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new LookAtPlayerGoal(this, Player.class, 16.0F));
-        this.goalSelector.addGoal(2, new RandomStrollGoal(this, 0.6D, 20, true) {
+        this.goalSelector.addGoal(2, new LookAtPlayerGoal(this, Player.class, 16.0F));
+        this.goalSelector.addGoal(1, new RandomStrollGoal(this, 0.6D, 20, true) {
 
             @Override
             protected Vec3 getPosition() {
+// ランダムなゴール座標を生成（startPosとendPosの範囲内）
                 double x = Mth.lerp(random.nextDouble(), startPos.getX(), endPos.getX());
                 double z = Mth.lerp(random.nextDouble(), startPos.getZ(), endPos.getZ());
-                double y = level().getHeightmapPos(Heightmap.Types.WORLD_SURFACE, new BlockPos((int)x, 0, (int)z)).getY();
-                return new Vec3(x, y, z);
+                double y = level().getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, new BlockPos((int)x, 0, (int)z)).getY();
+                Vec3 goalPos = new Vec3(x, y, z);
+
+                // 現在位置を取得
+                Vec3 currentPos = BelmondEntity.this.position();
+
+                // 方向ベクトルを計算
+                Vec3 direction = goalPos.subtract(currentPos);
+
+                // 方向ベクトルの長さを計算
+                double distance = direction.length();
+
+                // 16ブロック以内ならそのままゴール座標を返す
+                if (distance <= 16.0) {
+                    return goalPos;
+                }
+
+                // 16ブロックを超える場合、方向ベクトルを正規化して15ブロックにスケール
+                Vec3 normalizedDirection = direction.normalize(); // 長さを1に正規化
+                Vec3 scaledPos = currentPos.add(normalizedDirection.scale(15.0)); // 15ブロック分移動
+
+                // Y座標を再計算（スケール後の座標に合わせて）
+                double finalY = level().getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, new BlockPos((int)scaledPos.x, 0, (int)scaledPos.z)).getY();
+                Vec3 finalPos = new Vec3(scaledPos.x, finalY, scaledPos.z);
+
+                return finalPos;
             }
         });
     }

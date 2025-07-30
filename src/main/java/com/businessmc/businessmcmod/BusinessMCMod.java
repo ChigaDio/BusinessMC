@@ -16,6 +16,7 @@ import com.businessmc.businessmcmod.util.collection.*;
 import com.businessmc.businessmcmod.util.client.UtilClient;
 import com.businessmc.businessmcmod.util.collection.transaction.TransactionExecutor;
 import com.businessmc.businessmcmod.util.collection.transaction.TransactionResult;
+import com.businessmc.businessmcmod.util.config.BusinessMCCommonConfig;
 import com.businessmc.businessmcmod.util.general.UtilGeneral;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mongodb.client.MongoClient;
@@ -71,11 +72,9 @@ public class BusinessMCMod {
 
     public BusinessMCMod(IEventBus modEventBus, ModContainer modContainer) {
 
-        mongoClient = MongoDBConnectionManager.getInstance(
-                "127.0.0.1", 27017, "admin", "secret", "admin",
-                100, 10, 3000, 3000
-        );
-        System.out.println("BusinessMCMod: Constructing mod");
+        // コンフィグを登録
+        BusinessMCCommonConfig.register();
+
 
         modEventBus.addListener(this::onCommonSetup);
         modEventBus.addListener(this::clientSetup);
@@ -114,6 +113,16 @@ public class BusinessMCMod {
     }
     private void onCommonSetup(FMLCommonSetupEvent event) {
         System.out.println("BusinessMCMod: onCommonSetup");
+
+        event.enqueueWork(() ->
+        {
+            // MongoDB接続を初期化
+            mongoClient = MongoDBConnectionManager.getInstance();
+            System.out.println("BusinessMCMod: Constructing mod");
+
+            //テスト
+            JobTypeCollectionDb.MemoryCacheJobTypeCollectionData(mongoClient.getDatabase("game"));
+        });
 
     }
 

@@ -1,8 +1,17 @@
 package com.businessmc.businessmcmod.client.ui.screen;
 
+import com.businessmc.businessmcmod.client.PlayerClientData;
+import com.businessmc.businessmcmod.client.ui.custom.button.CustomImageButton;
 import com.businessmc.businessmcmod.client.ui.menu.BusinessShopMenu;
+import com.businessmc.businessmcmod.mongodb.MongoDBConnectionManager;
+import com.businessmc.businessmcmod.network.payload.shopcheckout.ShopCheckoutPayload;
+import com.businessmc.businessmcmod.util.collection.BusinessShopCollectionDb;
+import com.businessmc.businessmcmod.util.collection.ItemBlockGameCollectionDb;
+import com.businessmc.businessmcmod.util.collection.UserGamePlayerCollectionDb;
+import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import com.mongodb.client.MongoDatabase;
 import com.mongodb.lang.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -10,13 +19,16 @@ import net.minecraft.client.gui.ItemSlotMouseAction;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.render.state.GuiItemRenderState;
 import net.minecraft.client.gui.render.state.GuiRenderState;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.client.renderer.item.TrackingItemStackRenderState;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -73,6 +85,7 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
     private int maxOffset = 0;
     private List<Item> currentList;
     private Item selectedItem;
+    private  ItemStack selectStackItem;
     private EditBox amountInput;
 
     //スクロール
@@ -82,7 +95,8 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
     private int sbX, sbY, sbHeight, thumbHeight, thumbY;
     // 新：アイテムボタンを保持するリスト
     private final List<AbstractButton> itemButtons = new ArrayList<>();
-
+    private  boolean is_buy = false; //買うフラグ　falseなら売りフラグ
+    private  double amount = 0.0; //金額
     public BusinessShopScreen(BusinessShopMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
 
@@ -90,26 +104,30 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
 
     @Override
     protected void init() {
-        super.init();
-        // 毎回クリア
+        if(amountInput != null)
+        {
+            removeWidget(amountInput);
+        }
+        // imageWidthとimageHeightを最初に固定
+        this.imageWidth = 256;
+        this.imageHeight = 256;
+        super.init(); // leftPosとtopPosを計算
+
+        // ウィジェットをクリア
         this.renderables.clear();
         this.children().clear();
         itemButtons.clear();
 
-        // 常に戻るボタンは用意。挙動は state によって変える
-        addRenderableWidget(Button.builder(Component.literal("< Back"), btn -> {
-            switch (state) {
-                case CATEGORY     -> this.minecraft.setScreen(null);
-                case ITEM_LIST    -> { state = State.CATEGORY; init(); }
-                case AMOUNT_INPUT -> { state = State.ITEM_LIST; init(); }
-            }
-        }).bounds(leftPos + 4, topPos + 4, 60, 18).build());
-
+        // 戻るボタンを最初に追加
+        addBackButton();
+        // 状態に応じた初期化
         switch (state) {
             case CATEGORY     -> initCategory();
             case ITEM_LIST    -> initItemList();
             case AMOUNT_INPUT -> initAmountInput();
         }
+
+
     }
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollDeltaX, double scrollDeltaY) {
         // ITEM_LIST 状態かつスクロール可能なら
@@ -118,6 +136,7 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
             int dir = (int) Math.signum(scrollDeltaY);
             // 上スクロールで dir=+1 → scrollOffset--、下スクロールで dir=-1 → scrollOffset++
             scrollOffset = Mth.clamp(scrollOffset - dir, 0, maxOffset);
+
             init();   // ボタン群を再生成
             return true;
         }
@@ -135,17 +154,26 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
 
     private void addBackButton() {
         addRenderableWidget(Button.builder(Component.literal("<"), btn -> {
-            if (state == State.ITEM_LIST) state = State.CATEGORY;
-            else if (state == State.AMOUNT_INPUT) state = State.ITEM_LIST;
-            this.minecraft.setScreen(null); // メニューを閉じる
+            if (state == State.ITEM_LIST) {
+                state = State.CATEGORY;
+                init();
+            } else if (state == State.AMOUNT_INPUT) {
+                state = State.ITEM_LIST;
+                init();
+            } else {
+                // CATEGORY状態ではメニューを閉じる
+                onClose();
+            }
         }).bounds(leftPos + 4, topPos + 4, 20, 20).build());
     }
 
     private void initCategory() {
+        // BuyボタンとSellボタンの位置を固定
         addRenderableWidget(Button.builder(Component.literal("Buy"), btn -> {
             state = State.ITEM_LIST;
             currentList = menu.getBuyList();
             computeMaxOffset();
+            is_buy = true;
             init();
         }).bounds(leftPos + 30, topPos + 40, 50, 18).build());
 
@@ -153,8 +181,11 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
             state = State.ITEM_LIST;
             currentList = menu.getSellList();
             computeMaxOffset();
+            is_buy = false;
             init();
         }).bounds(leftPos + 100, topPos + 40, 50, 18).build());
+
+
     }
 
     private void computeMaxOffset() {
@@ -175,30 +206,128 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
             int y = topPos + 30 + row * (BUTTON_HEIGHT + BUTTON_SPACING);
             Item item = currentList.get(i);
 
-            Button b = Button.builder(Component.literal(item.getDescriptionId()), btn -> {
-                        selectedItem = item;
-                        state = State.AMOUNT_INPUT;
-                        init();
-                    })
-                    .bounds(x, y, BUTTON_WIDTH, BUTTON_HEIGHT)
-                    .build();
+            ItemStack stack = new ItemStack(item);
+            // CustomImageButtonのサイズを修正
+            var b = addRenderableWidget(new CustomImageButton(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, btn -> {
+                selectedItem = item;
+                state = State.AMOUNT_INPUT;
+                init();
+            }, Component.literal(stack.getHoverName().getString())));
             addRenderableWidget(b);
             itemButtons.add(b);
+
         }
     }
 
     private void initAmountInput() {
-        amountInput = new EditBox(font, leftPos + 60, topPos + 60, 40, 18, Component.literal("Qty"));
+        var mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(selectedItem);
+        if(id == null)
+        {
+            state = State.CATEGORY;
+            this.init();
+            return;
+        }
+        if(player != null)
+        {
+            var db = MongoDBConnectionManager.getInstance().getDatabase("game");
+            if(db != null)
+            {
+                var result = BusinessShopCollectionDb.findIdOne(db,menu.getShopID());
+                if(!result.isSuccess())
+                {
+                    state = State.CATEGORY;
+                    this.init();
+                    return;
+                }
+                else
+                {
+                    //とれたら金額計算
+                    var data = result.getResult();
+
+                    var itemdata = is_buy ? data.getBuyList().stream()
+                            .filter(item -> item.getItemIdName().equals(id.getPath())).findFirst() :
+                            data.getSaleList().stream()
+                                    .filter(item -> item.getItemIdName().equals(id.getPath())).findFirst();
+                    if(itemdata == null)
+                    {
+                        state = State.CATEGORY;
+                        this.init();
+                        return;
+                    }
+                    amount = data.getBaseRate() * (itemdata.get().getPrice() *itemdata.get().getPriceRate());
+                }
+            }
+        }
+
+
+        //所持金取得
+        // 入力ボックス
+        amountInput = new EditBox(font, leftPos + 60, topPos + 60, 60, 20, Component.literal("Qty")) {
+            @Override
+            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                super.renderWidget(guiGraphics, mouseX, mouseY, partialTick);
+
+                // カスタム枠線（例：青枠）
+                if (this.isFocused()) {
+                    drawRectOutline(guiGraphics, this.getX() - 1, this.getY() - 1, this.getWidth() + 2, this.getHeight() + 2, 0xFF00AACC);
+                }
+            }
+        };
+        amountInput.setBordered(true); // 枠線あり
+        amountInput.setTextColor(0xFFFFFFFF); // 白文字
+        amountInput.setTextColor(0xFFFFFFFF); // 白
         amountInput.setValue("1");
         addRenderableWidget(amountInput);
-        addRenderableWidget(Button.builder(Component.literal("OK"), btn -> {
-            int qty;
-            try { qty = Integer.parseInt(amountInput.getValue()); } catch (NumberFormatException e) { return; }
-            // サーバーへリクエスト
-            //TradePayload.sendToServer(selectedItem, qty, menu.getEntity().getId());
-            minecraft.setScreen(null);
-        }).bounds(leftPos + 110, topPos + 60, 30, 18).build());
+
+        // OK ボタン
+        Button okButton = Button.builder(Component.literal("✔ OK"), btn -> {
+                    int qty;
+                    if(amountInput.getValue().isEmpty())
+                    {
+                        return;
+                    }
+                    try {
+                        qty = Integer.parseInt(amountInput.getValue());
+                    } catch (NumberFormatException e) {
+                        return;
+                    }
+
+                    ShopCheckoutPayload.sendToServer(player.getUUID().toString(),
+                            menu.getShopID(),
+                            is_buy,
+                            qty,
+                            id.getPath(),
+                            amount * qty);
+                    if(is_buy)
+                    {
+                        state = State.ITEM_LIST;
+                        init();
+                    }
+                })
+                .bounds(leftPos + 130, topPos + 60, 50, 20)
+                .build();
+
+        // ボタンにツールチップや色付け
+        okButton.setTooltip(Tooltip.create(Component.literal("確定して送信")));
+        addRenderableWidget(okButton);
+
+        selectStackItem = new ItemStack(selectedItem);
     }
+
+    // 枠線を手動で描画するユーティリティメソッド
+    private void drawRectOutline(GuiGraphics guiGraphics, int x, int y, int width, int height, int color) {
+        // 上
+        guiGraphics.fill(x, y, x + width, y + 1, color);
+        // 下
+        guiGraphics.fill(x, y + height - 1, x + width, y + height, color);
+        // 左
+        guiGraphics.fill(x, y, x + 1, y + height, color);
+        // 右
+        guiGraphics.fill(x + width - 1, y, x + width, y + height, color);
+    }
+
 
     @Override
     public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
@@ -221,6 +350,28 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
                 gui.renderItem(stack, b.getX() + 2, b.getY() + 2);
             }
         }
+        else if(state == State.AMOUNT_INPUT)
+        {
+            gui.drawString(font, Component.literal("所持金: " + PlayerClientData.balance + "円"), leftPos + 60, topPos + 40, 0xFFFFD700); // 金色
+
+            // アイテムを描画（アイテムの表示位置）
+            int itemX = leftPos + 60;
+            int itemY = topPos + 80;
+            gui.renderItem(selectStackItem, itemX, itemY);
+            gui.renderItemDecorations(font, selectStackItem, itemX, itemY);
+
+            var inputValue = amountInput.getValue();
+            if(inputValue.isEmpty()) {
+                amountInput.setValue("0");
+                inputValue = "0";
+            }
+            double fixAmount = amount * (inputValue.isEmpty() == false ? Integer.parseInt(inputValue) : 0.0);
+            // 売値または買値のテキストを表示
+            int priceX = itemX + 50; // アイテムの右側に表示
+            int priceY = itemY + 6;
+            String priceText = is_buy ? "買値: " + fixAmount : "売値: " + fixAmount;
+            gui.drawString(font, priceText, priceX + 20, priceY, 0xFFFFD700);
+        }
 
 
 
@@ -231,18 +382,8 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
         //RenderSystem.setShader(GameRenderer::getPositionTexShader);
         //RenderSystem.setShaderTexture(0, BACKGROUND);
         // 背景にインベントリの灰色チェック柄を描画
-        gui.pose().pushMatrix();
-        gui.pose().translate(-384, 0);
-        gui.pose().scale(2.5f, 1f);
-        gui.blit(
-                RenderPipelines.GUI_TEXTURED,
-                BACKGROUND,
-                this.leftPos, this.topPos,
-                0, 0,
-                this.imageWidth, this.imageHeight,
-                256, 256
-        );
-        gui.pose().popMatrix();
+        gui.blit(RenderPipelines.GUI_TEXTURED,BACKGROUND,0,0,0,0,650,350,650,350);
+
 
         if(state == State.ITEM_LIST) {
             sbX      = leftPos + imageWidth - 14;
@@ -259,32 +400,7 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
             gui.fill(sbX + 1, thumbY, sbX + SCROLLBAR_WIDTH - 1, thumbY + thumbHeight, 0xFFAAAAAA);
         }
 
-        if (state == State.AMOUNT_INPUT && selectedItem != null) {
-            // 大きく表示したい座標
-            int baseX = leftPos + 20;
-            int baseY = topPos  + 40;
-            ItemStack select_stack_render = new ItemStack(selectedItem);
 
-            // 1) PoseStack でスケール
-            Matrix3x2fStack ps = gui.pose();
-            ps.pushMatrix();
-            // 原点を (baseX, baseY) に移動してから拡大
-            ps.translate(baseX, baseY, ps);
-            ps.scale(3.0f, 3.0f, ps);
-            ps.translate(-baseX, -baseY, ps);
-
-
-            // 2) アイテム描画
-            gui.renderItem(select_stack_render, baseX, baseY);
-            gui.renderItemDecorations(font, select_stack_render, baseX, baseY, "");
-
-            // 3) PoseStack を戻す
-            ps.popMatrix();
-
-            // 4) アイテム名を取得して描画
-            //String name = select_stack_render.getHoverName().getString();
-            //gui.drawString(font, name, baseX + 40, baseY, 0xFFFFFF, true);
-        }
     }
 
     private void drawItems(GuiGraphics gui, int mouseX, int mouseY) {
@@ -380,5 +496,20 @@ public class BusinessShopScreen extends AbstractContainerScreen<BusinessShopMenu
         );
     }
 
+    // 光とオーバーレイの色を取得（必要に応じて調整）
+    private int getLightColor() {
+        return 0xF000F0; // 標準の明るい光
+    }
 
+    private int getOverlayColor() {
+        return 0xFFFFFF; // 標準のオーバーレイ
+    }
+
+    public void onClose() {
+        if (minecraft.player != null) {
+            minecraft.player.closeContainer(); // サーバーにメニュー閉じを通知
+        }
+
+        super.onClose();
+    }
 }

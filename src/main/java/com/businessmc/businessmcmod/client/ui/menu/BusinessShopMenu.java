@@ -9,6 +9,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -32,13 +33,40 @@ public class BusinessShopMenu extends AbstractContainerMenu {
     public List<Item> getSellList() {
         return entity.getSellableItems();
     }
+    public  Integer getShopID(){return entity.getEntityData().get((BusinessTradeEntity.ENTITY_ID));}
     public BusinessTradeEntity getEntity() {
         return entity;
     }
 
+
     @Override
-    public ItemStack quickMoveStack(Player player, int i) {
+    public ItemStack quickMoveStack(Player player, int index) {
         ItemStack itemstack = ItemStack.EMPTY;
+        Slot slot = this.slots.get(index);
+
+        if (slot != null && slot.hasItem()) {
+            ItemStack stack = slot.getItem();
+            itemstack = stack.copy();
+
+            // ホットバー（0～8）またはインベントリ（9～35）から移動
+            if (index < 36) {
+                // インベントリ/ホットバーから他のスロット（未実装の場合、移動なし）
+                if (!this.moveItemStackTo(stack, 36, this.slots.size(), false)) {
+                    return ItemStack.EMPTY;
+                }
+            } else {
+                // 他のスロットからインベントリ/ホットバーへ
+                if (!this.moveItemStackTo(stack, 0, 36, false)) {
+                    return ItemStack.EMPTY;
+                }
+            }
+
+            if (stack.isEmpty()) {
+                slot.set(ItemStack.EMPTY);
+            } else {
+                slot.setChanged();
+            }
+        }
 
         return itemstack;
     }
@@ -59,4 +87,10 @@ public class BusinessShopMenu extends AbstractContainerMenu {
     }
 
     @Override public boolean stillValid(net.minecraft.world.entity.player.Player player) { return true; }
+
+    public void removed(Player player) {
+        super.removed(player);
+
+
+    }
 }

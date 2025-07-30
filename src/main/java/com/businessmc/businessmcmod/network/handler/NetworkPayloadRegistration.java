@@ -4,6 +4,8 @@ import com.businessmc.businessmcmod.BusinessMCMod;
 import com.businessmc.businessmcmod.network.payload.ButtonClickPayload;
 import com.businessmc.businessmcmod.network.payload.ButtonResultPayload;
 import com.businessmc.businessmcmod.network.payload.PlayerDataSyncPayload;
+import com.businessmc.businessmcmod.network.payload.shopcheckout.ShopCheckoutPayload;
+import com.businessmc.businessmcmod.network.payload.shopcheckout.ShopCheckoutResultPayload;
 import net.neoforged.bus.api.SubscribeEvent;
 import  net.neoforged.fml.common.Mod;
 import  net.neoforged.fml.common.EventBusSubscriber;
@@ -32,6 +34,17 @@ public class NetworkPayloadRegistration {
                         ButtonResultPayload.TYPE,
                         ButtonResultPayload.STREAM_CODEC,
                         ClientPayloadHandler::handleButtonResult
+                )        // ✅ ShopCheckout（クライアント → サーバー）
+                .playToServer(
+                        ShopCheckoutPayload.TYPE,
+                        ShopCheckoutPayload.STREAM_CODEC,
+                        ServerPayloadHandler::handleShopCheckout
+                )
+                // ✅ ShopCheckoutResult（サーバー → クライアント）
+                .playToClient(
+                        ShopCheckoutResultPayload.TYPE,
+                        ShopCheckoutResultPayload.STREAM_CODEC,
+                        ClientPayloadHandler::handleShopCheckoutResult
                 );
     }
 
@@ -44,6 +57,11 @@ public class NetworkPayloadRegistration {
         event.register(
                 ButtonResultPayload.TYPE,
                 ClientPayloadHandler::handleButtonResult
+        );
+        // ✅ ShopCheckoutResult クライアント側受信
+        event.register(
+                ShopCheckoutResultPayload.TYPE,
+                ClientPayloadHandler::handleShopCheckoutResult
         );
     }
 }

@@ -12,55 +12,149 @@ import com.mongodb.connection.SocketSettings;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
-public class MongoDBConnectionManager {
 
+import com.businessmc.businessmcmod.util.config.BusinessMCCommonConfig;
+
+import com.mongodb.MongoException;
+
+
+import net.neoforged.fml.loading.FMLEnvironment;
+import org.bson.Document;
+
+
+public class MongoDBConnectionManager {
     private static MongoClient mongoClient;
 
     private MongoDBConnectionManager() {
     }
 
-    public  static MongoClient getInstance()
-    {
+    public static MongoClient getInstance() {
+        if (mongoClient == null) {
+            if (FMLEnvironment.dist.isClient()) {
+                mongoClient = tryConnectClient();
+            } else {
+                mongoClient = tryConnectServer();
+            }
+        }
         return mongoClient;
     }
 
-    public static synchronized MongoClient getInstance(
-            String host,
-            int port,
-            String username,
-            String password,
-            String authSource,
-            int maxPoolSize,
-            int minPoolSize,
-            int connectTimeoutMs,
-            int socketTimeoutMs
-    ) {
-        if (mongoClient == null) {
-            MongoCredential credential = MongoCredential.createCredential(username, authSource, password.toCharArray());
+    private static MongoClient tryConnectClient() {
+        String user = BusinessMCCommonConfig.MONGO_USER.get();
+        String password = BusinessMCCommonConfig.MONGO_PASSWORD.get();
+        String authDb = BusinessMCCommonConfig.MONGO_AUTH_DB.get();
+        int maxPoolSize = BusinessMCCommonConfig.MONGO_MAX_POOL_SIZE.get();
+        int minPoolSize = BusinessMCCommonConfig.MONGO_MIN_POOL_SIZE.get();
+        int connectTimeoutMs = BusinessMCCommonConfig.MONGO_CONNECT_TIMEOUT_MS.get();
+        int socketTimeoutMs = BusinessMCCommonConfig.MONGO_SOCKET_TIMEOUT_MS.get();
 
-            ConnectionPoolSettings poolSettings = ConnectionPoolSettings.builder()
-                    .maxSize(maxPoolSize)
-                    .minSize(minPoolSize)
-                    .maxConnectionIdleTime(60, TimeUnit.SECONDS)
-                    .maxWaitTime(30, TimeUnit.SECONDS)
-                    .build();
+        String[] hosts = {
+                BusinessMCCommonConfig.CLIENT_MONGO_HOST_PRIMARY.get(),
+                BusinessMCCommonConfig.CLIENT_MONGO_HOST_FALLBACK.get()
+        };
+        int[] ports = {
+                BusinessMCCommonConfig.CLIENT_MONGO_PORT_PRIMARY.get(),
+                BusinessMCCommonConfig.CLIENT_MONGO_PORT_FALLBACK.get()
+        };
 
-            SocketSettings socketSettings = SocketSettings.builder()
-                    .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
-                    .readTimeout(socketTimeoutMs, TimeUnit.MILLISECONDS)
-                    .build();
+        for (int i = 0; i < hosts.length; i++) {
+            // ループ内の変数をローカル変数にコピー
+            final String currentHost = hosts[i];
+            final int currentPort = ports[i];
 
-            MongoClientSettings settings = MongoClientSettings.builder()
-                    .applyToClusterSettings(builder ->
-                            builder.hosts(Collections.singletonList(new ServerAddress(host, port))))
-                    .credential(credential)
-                    .applyToConnectionPoolSettings(builder -> builder.applySettings(poolSettings))
-                    .applyToSocketSettings(builder -> builder.applySettings(socketSettings))
-                    .build();
+            try {
+                MongoCredential credential = MongoCredential.createCredential(user, authDb, password.toCharArray());
 
-            mongoClient = MongoClients.create(settings);
+                ConnectionPoolSettings poolSettings = ConnectionPoolSettings.builder()
+                        .maxSize(maxPoolSize)
+                        .minSize(minPoolSize)
+                        .maxConnectionIdleTime(60, TimeUnit.SECONDS)
+                        .maxWaitTime(30, TimeUnit.SECONDS)
+                        .build();
+
+                SocketSettings socketSettings = SocketSettings.builder()
+                        .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
+                        .readTimeout(socketTimeoutMs, TimeUnit.MILLISECONDS)
+                        .build();
+
+                MongoClientSettings settings = MongoClientSettings.builder()
+                        .applyToClusterSettings(builder ->
+                                builder.hosts(Collections.singletonList(new ServerAddress(currentHost, currentPort))))
+                        .credential(credential)
+                        .applyToConnectionPoolSettings(builder -> builder.applySettings(poolSettings))
+                        .applyToSocketSettings(builder -> builder.applySettings(socketSettings))
+                        .build();
+
+                MongoClient client = MongoClients.create(settings);
+                // 接続テスト
+                client.getDatabase(authDb).runCommand(new Document("ping", 1));
+                System.out.println("Successfully connected to MongoDB at " + currentHost + ":" + currentPort);
+                return client;
+            } catch (MongoException e) {
+                System.err.println("Failed to connect to MongoDB at " + currentHost + ":" + currentPort + ": " + e.getMessage());
+            }
         }
-        return mongoClient;
+        throw new RuntimeException("Failed to connect to any MongoDB instance for client");
+    }
+
+    private static MongoClient tryConnectServer() {
+        String user = BusinessMCCommonConfig.MONGO_USER.get();
+        String password = BusinessMCCommonConfig.MONGO_PASSWORD.get();
+        String authDb = BusinessMCCommonConfig.MONGO_AUTH_DB.get();
+        int maxPoolSize = BusinessMCCommonConfig.MONGO_MAX_POOL_SIZE.get();
+        int minPoolSize = BusinessMCCommonConfig.MONGO_MIN_POOL_SIZE.get();
+        int connectTimeoutMs = BusinessMCCommonConfig.MONGO_CONNECT_TIMEOUT_MS.get();
+        int socketTimeoutMs = BusinessMCCommonConfig.MONGO_SOCKET_TIMEOUT_MS.get();
+
+        String[] hosts = {
+                BusinessMCCommonConfig.SERVER_MONGO_HOST_PRIMARY.get(),
+                BusinessMCCommonConfig.SERVER_MONGO_HOST_SECONDARY.get(),
+                BusinessMCCommonConfig.SERVER_MONGO_HOST_FALLBACK.get()
+        };
+        int[] ports = {
+                BusinessMCCommonConfig.SERVER_MONGO_PORT_PRIMARY.get(),
+                BusinessMCCommonConfig.SERVER_MONGO_PORT_SECONDARY.get(),
+                BusinessMCCommonConfig.SERVER_MONGO_PORT_FALLBACK.get()
+        };
+
+        for (int i = 0; i < hosts.length; i++) {
+            // ループ内の変数をローカル変数にコピー
+            final String currentHost = hosts[i];
+            final int currentPort = ports[i];
+
+            try {
+                MongoCredential credential = MongoCredential.createCredential(user, authDb, password.toCharArray());
+
+                ConnectionPoolSettings poolSettings = ConnectionPoolSettings.builder()
+                        .maxSize(maxPoolSize)
+                        .minSize(minPoolSize)
+                        .maxConnectionIdleTime(60, TimeUnit.SECONDS)
+                        .maxWaitTime(30, TimeUnit.SECONDS)
+                        .build();
+
+                SocketSettings socketSettings = SocketSettings.builder()
+                        .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
+                        .readTimeout(socketTimeoutMs, TimeUnit.MILLISECONDS)
+                        .build();
+
+                MongoClientSettings settings = MongoClientSettings.builder()
+                        .applyToClusterSettings(builder ->
+                                builder.hosts(Collections.singletonList(new ServerAddress(currentHost, currentPort))))
+                        .credential(credential)
+                        .applyToConnectionPoolSettings(builder -> builder.applySettings(poolSettings))
+                        .applyToSocketSettings(builder -> builder.applySettings(socketSettings))
+                        .build();
+
+                MongoClient client = MongoClients.create(settings);
+                // 接続テスト
+                client.getDatabase(authDb).runCommand(new Document("ping", 1));
+                System.out.println("Successfully connected to MongoDB at " + currentHost + ":" + currentPort);
+                return client;
+            } catch (MongoException e) {
+                System.err.println("Failed to connect to MongoDB at " + currentHost + ":" + currentPort + ": " + e.getMessage());
+            }
+        }
+        throw new RuntimeException("Failed to connect to any MongoDB instance for server");
     }
 
     public static synchronized void close() {
